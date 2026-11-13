@@ -1,0 +1,653 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cronômetro</title>
+<style>
+  :root {
+    --fundo: #0f1115;
+    --cartao: #171a21;
+    --cartao-2: #1d212a;
+    --borda: #262b36;
+    --texto: #e7e9ee;
+    --apagado: #8b92a1;
+    --acento: #4fd1c5;
+    --acento-escuro: #2a8f86;
+    --acento-fundo: rgba(79, 209, 197, 0.12);
+    --erro: #ff8a80;
+    --raio: 14px;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: radial-gradient(ellipse at 50% -10%, #171b24 0%, var(--fundo) 60%);
+    color: var(--texto);
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+    display: flex;
+    justify-content: center;
+    padding: 28px 16px 40px;
+    min-height: 100%;
+  }
+  main { width: 100%; max-width: 440px; display: flex; flex-direction: column; gap: 22px; }
+  h1 { font-size: 15px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: var(--apagado); margin: 0; text-align: center; }
+
+  /* Anel */
+  .anel { position: relative; width: min(78vw, 300px); aspect-ratio: 1; margin: 0 auto; }
+  .anel svg { width: 100%; height: 100%; transform: rotate(-90deg); display: block; overflow: visible; }
+  .anel circle { fill: none; stroke-width: 4; }
+  .trilho { stroke: var(--borda); }
+  .progresso { stroke: var(--acento); stroke-linecap: round; transition: stroke .3s ease; }
+  .centro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; }
+  .numero, .editor input, .editor span {
+    font-size: clamp(44px, 15vw, 64px); font-weight: 300; letter-spacing: -.01em; line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+  .numero { margin: 0; }
+  .editor { display: flex; align-items: center; }
+  .editor input {
+    width: 2.3ch; padding: 2px 0; text-align: center; color: var(--texto); font-family: inherit;
+    background: transparent; border: 0; border-bottom: 2px solid transparent; border-radius: 6px;
+    transition: border-color .2s ease, background .2s ease; caret-color: var(--acento);
+  }
+  .editor input#minutos { width: 3.2ch; text-align: right; }
+  .editor input:hover { background: rgba(255,255,255,.03); }
+  .editor input:focus { outline: none; border-bottom-color: var(--acento); background: var(--acento-fundo); }
+  .editor span { color: var(--apagado); padding: 0 2px; }
+  .estado { font-size: 13px; color: var(--apagado); letter-spacing: .06em; min-height: 1.2em; }
+  [hidden] { display: none !important; }
+
+  /* Fim do tempo: o anel pulsa */
+  body.tocando .progresso { animation: pulso 1s ease-in-out infinite; }
+  body.tocando .numero { animation: piscar 1s ease-in-out infinite; color: var(--acento); }
+  body.tocando .estado { color: var(--acento); }
+  @keyframes pulso {
+    0%, 100% { stroke-width: 4; filter: drop-shadow(0 0 0 rgba(79,209,197,0)); }
+    50% { stroke-width: 6; filter: drop-shadow(0 0 8px rgba(79,209,197,.7)); }
+  }
+  @keyframes piscar { 0%, 100% { opacity: 1; } 50% { opacity: .45; } }
+
+  /* Botões */
+  button, select {
+    font: inherit; color: var(--texto); background: var(--cartao-2);
+    border: 1px solid var(--borda); border-radius: 10px; cursor: pointer;
+    transition: background .15s ease, border-color .15s ease, transform .08s ease, opacity .15s ease;
+  }
+  button:hover:not(:disabled), select:hover { background: #242936; border-color: #343b4a; }
+  button:active:not(:disabled) { transform: scale(.97); }
+  button:focus-visible, select:focus-visible, input[type=range]:focus-visible {
+    outline: 2px solid var(--acento); outline-offset: 2px;
+  }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button svg { width: 18px; height: 18px; flex: none; }
+
+  .atalhos { display: flex; gap: 8px; justify-content: center; }
+  .atalhos button { padding: 7px 14px; font-size: 14px; border-radius: 999px; color: var(--apagado); }
+  .atalhos button:hover:not(:disabled) { color: var(--texto); }
+
+  .controles { display: flex; gap: 10px; justify-content: center; }
+  .controles button { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 52px; font-size: 16px; font-weight: 500; }
+  #principal { flex: 1; max-width: 240px; background: var(--acento); color: #06201d; border-color: var(--acento); }
+  #principal:hover:not(:disabled) { background: #6ee0d5; border-color: #6ee0d5; }
+  #zerar { width: 120px; }
+  #pararSom { flex: 1; max-width: 360px; background: var(--acento); color: #06201d; border-color: var(--acento); animation: piscar 1s ease-in-out infinite; }
+  #pararSom:hover { background: #6ee0d5; }
+
+  .dica { text-align: center; font-size: 12px; color: var(--apagado); margin: -8px 0 0; }
+  kbd { font-family: inherit; font-size: 11px; padding: 1px 6px; border: 1px solid var(--borda); border-bottom-width: 2px; border-radius: 5px; background: var(--cartao-2); }
+
+  /* Painel do som */
+  .painel { background: var(--cartao); border: 1px solid var(--borda); border-radius: var(--raio); padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+  .painel h2 { margin: 0; font-size: 13px; font-weight: 600; color: var(--apagado); letter-spacing: .08em; text-transform: uppercase; }
+  .linha { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  select { flex: 1; min-width: 0; padding: 9px 10px; appearance: none;
+    background-image: linear-gradient(45deg, transparent 50%, var(--apagado) 50%), linear-gradient(135deg, var(--apagado) 50%, transparent 50%);
+    background-position: calc(100% - 17px) 55%, calc(100% - 12px) 55%; background-size: 5px 5px; background-repeat: no-repeat; padding-right: 30px; }
+  .painel button { padding: 9px 12px; font-size: 14px; display: inline-flex; align-items: center; gap: 6px; }
+  .painel .linha button { flex: 1; justify-content: center; }
+  .nome-som { font-size: 13px; color: var(--apagado); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nome-som b { color: var(--texto); font-weight: 500; }
+  .erro { font-size: 13px; color: var(--erro); }
+  .volume { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--apagado); }
+  .volume output { width: 3.5ch; text-align: right; color: var(--texto); }
+  input[type=range] { flex: 1; accent-color: var(--acento); height: 20px; cursor: pointer; border-radius: 6px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Cronômetro</h1>
+
+  <div class="anel">
+    <svg viewBox="0 0 120 120" aria-hidden="true">
+      <circle class="trilho" cx="60" cy="60" r="54"/>
+      <circle class="progresso" id="progresso" cx="60" cy="60" r="54"/>
+    </svg>
+    <div class="centro">
+      <div class="editor" id="editor">
+        <input id="minutos" inputmode="numeric" autocomplete="off" maxlength="3" aria-label="Minutos" value="05">
+        <span>:</span>
+        <input id="segundos" inputmode="numeric" autocomplete="off" maxlength="2" aria-label="Segundos" value="00">
+      </div>
+      <p class="numero" id="numero" hidden>05:00</p>
+      <div class="estado" id="estado" aria-live="polite">Clique no número para editar</div>
+    </div>
+  </div>
+
+  <div class="atalhos" id="atalhos">
+    <button data-min="5">5 min</button>
+    <button data-min="10">10 min</button>
+    <button data-min="15">15 min</button>
+    <button data-min="25">25 min</button>
+  </div>
+
+  <div class="controles" id="controles">
+    <button id="zerar" title="Zerar (Esc)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+      Zerar
+    </button>
+    <button id="principal" title="Iniciar ou pausar (Espaço)">
+      <svg id="iconePlay" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.5-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+      <svg id="iconePausa" viewBox="0 0 24 24" fill="currentColor" hidden><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+      <span id="rotuloPrincipal">Iniciar</span>
+    </button>
+  </div>
+  <div class="controles" id="controlesSom" hidden>
+    <button id="pararSom">
+      <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      Parar som
+    </button>
+  </div>
+  <p class="dica"><kbd>Espaço</kbd> inicia ou pausa &nbsp;·&nbsp; <kbd>Esc</kbd> zera</p>
+
+  <section class="painel" aria-label="Som do alarme">
+    <h2>Som do alarme</h2>
+    <div class="linha">
+      <select id="escolhaSom" aria-label="Escolher som">
+        <option value="beep">Beep clássico</option>
+        <option value="sino">Sino suave</option>
+        <option value="alarme">Alarme digital</option>
+        <option value="personalizado" id="opcaoPersonalizado" hidden>Meu som</option>
+      </select>
+      <button id="testar" title="Tocar o som escolhido">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>
+        <span id="rotuloTestar">Testar</span>
+      </button>
+    </div>
+    <div class="linha">
+      <button id="trocar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/></svg>
+        Trocar som
+      </button>
+      <button id="padrao" title="Apaga o som escolhido e volta ao beep clássico">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/></svg>
+        Voltar ao padrão
+      </button>
+      <input type="file" id="arquivo" accept="audio/*,.mp3,.wav,.ogg" hidden>
+    </div>
+    <div class="nome-som" id="nomeSom" hidden>Arquivo: <b id="nomeArquivo"></b></div>
+    <div class="erro" id="erroSom" hidden></div>
+    <label class="volume">
+      Volume
+      <input type="range" id="volume" min="0" max="100" step="1" value="80">
+      <output id="volumeValor">80%</output>
+    </label>
+  </section>
+</main>
+
+<script>
+"use strict";
+// ---------- Utilidades ----------
+const $ = (id) => document.getElementById(id);
+const CHAVE_TEMPO = "cronometro.tempo";
+const CHAVE_SOM = "cronometro.som";
+const CHAVE_VOLUME = "cronometro.volume";
+const MAX_SEGUNDOS = 999 * 60 + 59;
+const CIRCUNFERENCIA = 2 * Math.PI * 54;
+
+function lerStorage(chave, padrao) {
+  try { const v = localStorage.getItem(chave); return v === null ? padrao : v; } catch (e) { return padrao; }
+}
+function gravarStorage(chave, valor) { try { localStorage.setItem(chave, String(valor)); } catch (e) {} }
+const dois = (n) => String(n).padStart(2, "0");
+
+function formatar(segundos) {
+  const h = Math.floor(segundos / 3600);
+  const m = Math.floor((segundos % 3600) / 60);
+  const s = segundos % 60;
+  if (h > 0) return h + ":" + dois(m) + ":" + dois(s);
+  return dois(m) + ":" + dois(s);
+}
+
+// ---------- Estado do cronômetro ----------
+// estados: "parado" | "rodando" | "pausado" | "tocando"
+let estado = "parado";
+let duracaoMs = 0;      // tempo configurado ao iniciar
+let restanteMs = 0;     // vale quando pausado
+let fimEm = 0;          // instante (performance.now) em que o tempo acaba, vale quando rodando
+let timerFim = null, timerTela = null, quadro = null;
+
+// Quanto falta, sempre pelo relógio real. Nunca soma intervalos.
+function restante(agora) {
+  if (estado === "rodando") return Math.max(0, fimEm - agora);
+  if (estado === "pausado") return restanteMs;
+  if (estado === "tocando") return 0;
+  return duracaoMs;
+}
+
+// ---------- Campos de entrada ----------
+const campoMin = $("minutos"), campoSeg = $("segundos");
+
+function somenteDigitos(campo) {
+  const limpo = campo.value.replace(/\D/g, "");
+  if (limpo !== campo.value) campo.value = limpo;
+}
+function lerCampos() {
+  const m = parseInt(campoMin.value, 10) || 0;
+  const s = parseInt(campoSeg.value, 10) || 0;
+  return Math.min(MAX_SEGUNDOS, Math.max(0, m * 60 + s));
+}
+// Segundos acima de 59 viram minutos (75 s -> 01:15)
+function normalizarCampos() {
+  const total = lerCampos();
+  campoMin.value = dois(Math.floor(total / 60));
+  campoSeg.value = dois(total % 60);
+  duracaoMs = total * 1000;
+  gravarStorage(CHAVE_TEMPO, total);
+  atualizarTela();
+  return total;
+}
+function definirTempo(totalSeg) {
+  totalSeg = Math.min(MAX_SEGUNDOS, Math.max(0, Math.floor(totalSeg)));
+  campoMin.value = dois(Math.floor(totalSeg / 60));
+  campoSeg.value = dois(totalSeg % 60);
+  normalizarCampos();
+}
+for (const campo of [campoMin, campoSeg]) {
+  campo.addEventListener("input", () => {
+    somenteDigitos(campo);
+    duracaoMs = lerCampos() * 1000;
+    atualizarTela();
+  });
+  campo.addEventListener("focus", () => campo.select());
+  campo.addEventListener("blur", normalizarCampos);
+  campo.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { campo.blur(); }
+    if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const passo = (campo === campoMin ? 60 : 1) * (e.key === "ArrowUp" ? 1 : -1);
+      definirTempo(lerCampos() + passo);
+      campo.select();
+    }
+  });
+}
+document.querySelectorAll("#atalhos button").forEach((b) => {
+  b.addEventListener("click", () => { if (estado === "parado") definirTempo(Number(b.dataset.min) * 60); });
+});
+
+// ---------- Ciclo do cronômetro ----------
+function iniciar() {
+  if (estado !== "parado") return;
+  const total = normalizarCampos();
+  if (total <= 0) { avisar("Defina um tempo maior que zero"); return; }
+  destravarAudio();
+  prepararSom();
+  duracaoMs = total * 1000;
+  restanteMs = duracaoMs;
+  rodar();
+}
+function rodar() {
+  estado = "rodando";
+  fimEm = performance.now() + restanteMs;
+  agendar();
+  atualizarTela();
+}
+function pausar() {
+  if (estado !== "rodando") return;
+  restanteMs = restante(performance.now());
+  estado = "pausado";
+  limparTimers();
+  atualizarTela();
+}
+function continuar() {
+  if (estado !== "pausado") return;
+  destravarAudio();
+  rodar();
+}
+function zerar() {
+  pararSom();
+  limparTimers();
+  estado = "parado";
+  restanteMs = 0;
+  duracaoMs = lerCampos() * 1000;
+  atualizarTela();
+}
+function alternar() {
+  if (estado === "parado") iniciar();
+  else if (estado === "rodando") pausar();
+  else if (estado === "pausado") continuar();
+}
+
+// Um timeout pro instante exato do fim (não é afetado pelo atraso de quadros)
+// e um intervalo só pra tela. Em segundo plano o navegador espaça os dois,
+// mas a conta é sempre pelo relógio, então o fim não atrasa a soma.
+function agendar() {
+  limparTimers();
+  const falta = Math.max(0, fimEm - performance.now());
+  timerFim = setTimeout(aoFim, falta + 5);
+  timerTela = setInterval(verificar, 250);
+  const anima = () => { verificar(); if (estado === "rodando") quadro = requestAnimationFrame(anima); };
+  quadro = requestAnimationFrame(anima);
+}
+function limparTimers() {
+  clearTimeout(timerFim); clearInterval(timerTela); cancelAnimationFrame(quadro);
+  timerFim = timerTela = quadro = null;
+}
+function verificar() {
+  if (estado !== "rodando") return;
+  const agora = performance.now();
+  if (restante(agora) <= 0) { terminar(); return; }
+  atualizarTela();
+}
+// Se o timeout do fim disparar cedo, reagenda pro que falta
+function aoFim() {
+  verificar();
+  if (estado === "rodando") timerFim = setTimeout(aoFim, Math.max(0, fimEm - performance.now()) + 5);
+}
+function terminar() {
+  limparTimers();
+  estado = "tocando";
+  restanteMs = 0;
+  instantes.fim = performance.now();
+  atualizarTela();
+  tocar(true);
+}
+document.addEventListener("visibilitychange", () => { if (!document.hidden) verificar(); });
+window.addEventListener("focus", verificar);
+
+// ---------- Tela ----------
+const progresso = $("progresso");
+progresso.style.strokeDasharray = CIRCUNFERENCIA.toFixed(2);
+let avisoAte = 0;
+
+function avisar(texto) {
+  $("estado").textContent = texto;
+  avisoAte = performance.now() + 2200;
+  setTimeout(atualizarTela, 2300);
+}
+function atualizarTela() {
+  const agora = performance.now();
+  const ms = restante(agora);
+  const seg = Math.ceil(ms / 1000);
+  const texto = formatar(seg);
+  const editando = estado === "parado";
+
+  $("editor").hidden = !editando;
+  $("numero").hidden = editando;
+  $("numero").textContent = texto;
+
+  const fracao = estado === "parado" || estado === "tocando" ? 1 : (duracaoMs > 0 ? ms / duracaoMs : 0);
+  progresso.style.strokeDashoffset = (CIRCUNFERENCIA * (1 - fracao)).toFixed(2);
+
+  document.body.classList.toggle("tocando", estado === "tocando");
+  $("controles").hidden = estado === "tocando";
+  $("controlesSom").hidden = estado !== "tocando";
+
+  const rodando = estado === "rodando";
+  // SVG nao tem a propriedade .hidden: precisa ser o atributo
+  $("iconePlay").toggleAttribute("hidden", rodando);
+  $("iconePausa").toggleAttribute("hidden", !rodando);
+  $("rotuloPrincipal").textContent = rodando ? "Pausar" : estado === "pausado" ? "Continuar" : "Iniciar";
+  $("principal").disabled = editando && lerCampos() <= 0;
+  $("zerar").disabled = editando;
+  document.querySelectorAll("#atalhos button").forEach((b) => (b.disabled = !editando));
+
+  if (agora >= avisoAte) {
+    $("estado").textContent = {
+      parado: lerCampos() > 0 ? "Clique no número para editar" : "Defina um tempo maior que zero",
+      rodando: "Contando",
+      pausado: "Pausado",
+      tocando: "Tempo esgotado",
+    }[estado];
+  }
+  document.title = {
+    parado: "Cronômetro",
+    rodando: texto + " · Cronômetro",
+    pausado: "Pausado " + texto + " · Cronômetro",
+    tocando: "Tempo esgotado · Cronômetro",
+  }[estado];
+}
+
+$("principal").addEventListener("click", alternar);
+$("zerar").addEventListener("click", zerar);
+$("pararSom").addEventListener("click", zerar);
+
+// ---------- Teclado ----------
+function ehControleDeTexto(el) { return el && (el.tagName === "SELECT" || (el.tagName === "INPUT" && el.type === "range")); }
+document.addEventListener("keydown", (e) => {
+  if (estado === "tocando") { e.preventDefault(); zerar(); return; } // qualquer tecla para o som
+  if (e.key === "Escape") { e.preventDefault(); if (document.activeElement) document.activeElement.blur(); zerar(); return; }
+  if (e.code === "Space" || e.key === " ") {
+    if (ehControleDeTexto(e.target)) return;
+    e.preventDefault();
+    if (e.repeat) return;
+    if (document.activeElement === campoMin || document.activeElement === campoSeg) document.activeElement.blur();
+    alternar();
+  }
+});
+// impede o Espaço de "clicar" no botão com foco depois do atalho
+document.addEventListener("keyup", (e) => {
+  if ((e.code === "Space" || e.key === " ") && !ehControleDeTexto(e.target)) e.preventDefault();
+});
+
+// ---------- Som ----------
+const audio = { ctx: null, ganho: null, fonte: null, tocando: false, loop: false, pedido: 0, buffers: {} };
+let somEscolhido = lerStorage(CHAVE_SOM, "beep");
+const instantes = { fim: 0 };
+
+function volumeAtual() { return Number($("volume").value) / 100; }
+function contexto() {
+  if (!audio.ctx) {
+    audio.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    audio.ganho = audio.ctx.createGain();
+    audio.ganho.gain.value = volumeAtual();
+    audio.ganho.connect(audio.ctx.destination);
+  }
+  return audio.ctx;
+}
+// Chamado dentro do clique (gesto do usuário): libera o áudio pro fim do tempo
+function destravarAudio() {
+  const c = contexto();
+  if (c.state === "suspended") c.resume();
+  // um som mudo de um instante garante a liberação em navegadores mais chatos
+  const b = c.createBuffer(1, 1, c.sampleRate);
+  const f = c.createBufferSource(); f.buffer = b; f.connect(c.destination); f.start();
+}
+
+// Sons embutidos, sintetizados na hora (nada de arquivo externo)
+const TAXA = 44100;
+function tom(oc, destino, forma, freq, t, dur, amp) {
+  const o = oc.createOscillator(); o.type = forma; o.frequency.value = freq;
+  const g = oc.createGain();
+  g.gain.setValueAtTime(0, t);
+  g.gain.linearRampToValueAtTime(amp, t + 0.005);
+  g.gain.setValueAtTime(amp, t + dur - 0.012);
+  g.gain.linearRampToValueAtTime(0, t + dur);
+  o.connect(g).connect(destino);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+function sintetizar(tipo) {
+  const dur = { beep: 1.4, sino: 2.8, alarme: 1.1 }[tipo] || 1.4;
+  const oc = new OfflineAudioContext(1, Math.ceil(TAXA * dur), TAXA);
+  if (tipo === "sino") {
+    const base = 659.25; // Mi 5
+    const parciais = [[1, .5, 2.6], [2.0, .22, 1.6], [2.76, .14, 1.1], [4.07, .07, .7], [5.4, .04, .5]];
+    for (const [razao, amp, queda] of parciais) {
+      const o = oc.createOscillator(); o.type = "sine"; o.frequency.value = base * razao;
+      const g = oc.createGain();
+      g.gain.setValueAtTime(0, 0);
+      g.gain.linearRampToValueAtTime(amp, 0.006);
+      g.gain.exponentialRampToValueAtTime(0.0001, queda);
+      o.connect(g).connect(oc.destination); o.start(0); o.stop(queda + 0.05);
+    }
+  } else if (tipo === "alarme") {
+    const filtro = oc.createBiquadFilter(); filtro.type = "lowpass"; filtro.frequency.value = 4500;
+    filtro.connect(oc.destination);
+    for (let i = 0; i < 4; i++) tom(oc, filtro, "square", 2000, i * 0.12, 0.07, 0.16);
+  } else {
+    for (let i = 0; i < 3; i++) tom(oc, oc.destination, "sine", 1000, i * 0.22, 0.13, 0.55);
+  }
+  return oc.startRendering();
+}
+function decodificar(blob) {
+  return blob.arrayBuffer().then((ab) => new OfflineAudioContext(2, 1, TAXA).decodeAudioData(ab));
+}
+
+// IndexedDB: o arquivo escolhido fica guardado como Blob
+function abrirBanco() {
+  return new Promise((ok, erro) => {
+    const r = indexedDB.open("cronometro", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("sons");
+    r.onsuccess = () => ok(r.result);
+    r.onerror = () => erro(r.error);
+  });
+}
+async function banco(modo, acao) {
+  const db = await abrirBanco();
+  return new Promise((ok, erro) => {
+    const tx = db.transaction("sons", modo);
+    const req = acao(tx.objectStore("sons"));
+    tx.oncomplete = () => { db.close(); ok(req ? req.result : undefined); };
+    tx.onerror = () => { db.close(); erro(tx.error); };
+    tx.onabort = () => { db.close(); erro(tx.error); };
+  });
+}
+const lerPersonalizado = () => banco("readonly", (st) => st.get("personalizado"));
+const gravarPersonalizado = (reg) => banco("readwrite", (st) => st.put(reg, "personalizado"));
+const apagarPersonalizado = () => banco("readwrite", (st) => st.delete("personalizado"));
+
+async function bufferAtual() {
+  if (somEscolhido === "personalizado") {
+    if (!audio.buffers.personalizado) {
+      const reg = await lerPersonalizado().catch(() => null);
+      if (reg && reg.blob) {
+        try { audio.buffers.personalizado = await decodificar(reg.blob); }
+        catch (e) { mostrarErro("Não consegui ler o arquivo guardado; usando o beep."); }
+      }
+    }
+    if (audio.buffers.personalizado) return audio.buffers.personalizado;
+    return bufferEmbutido("beep");
+  }
+  return bufferEmbutido(somEscolhido);
+}
+async function bufferEmbutido(tipo) {
+  if (!["beep", "sino", "alarme"].includes(tipo)) tipo = "beep";
+  if (!audio.buffers[tipo]) audio.buffers[tipo] = await sintetizar(tipo);
+  return audio.buffers[tipo];
+}
+function prepararSom() { bufferAtual().catch(() => {}); }
+
+async function tocar(emLoop) {
+  pararSom();
+  const meu = ++audio.pedido;
+  const buf = await bufferAtual();
+  if (meu !== audio.pedido) return; // parado enquanto carregava
+  const c = contexto();
+  if (c.state === "suspended") c.resume();
+  const f = c.createBufferSource();
+  f.buffer = buf; f.loop = emLoop;
+  f.connect(audio.ganho);
+  f.onended = () => { if (audio.fonte === f) { audio.fonte = null; audio.tocando = false; atualizarBotaoTestar(); } };
+  f.start();
+  audio.fonte = f; audio.tocando = true; audio.loop = emLoop;
+  atualizarBotaoTestar();
+}
+function pararSom() {
+  audio.pedido++;
+  if (audio.fonte) { const f = audio.fonte; audio.fonte = null; try { f.stop(); } catch (e) {} }
+  audio.tocando = false; audio.loop = false;
+  atualizarBotaoTestar();
+}
+function atualizarBotaoTestar() {
+  $("rotuloTestar").textContent = audio.tocando && estado !== "tocando" ? "Parar" : "Testar";
+}
+
+$("testar").addEventListener("click", () => {
+  if (estado === "tocando") return;
+  if (audio.tocando) { pararSom(); return; }
+  destravarAudio();
+  tocar(false);
+});
+
+function mostrarErro(texto) { $("erroSom").textContent = texto; $("erroSom").hidden = !texto; }
+async function atualizarPainelSom() {
+  const reg = await lerPersonalizado().catch(() => null);
+  const opcao = $("opcaoPersonalizado");
+  if (reg) {
+    opcao.hidden = false; opcao.textContent = "Meu som: " + reg.nome;
+    $("nomeArquivo").textContent = reg.nome; $("nomeSom").hidden = false;
+    $("nomeSom").title = reg.nome;
+  } else {
+    opcao.hidden = true; $("nomeSom").hidden = true;
+    if (somEscolhido === "personalizado") { somEscolhido = "beep"; gravarStorage(CHAVE_SOM, "beep"); }
+  }
+  $("escolhaSom").value = somEscolhido;
+}
+
+$("escolhaSom").addEventListener("change", (e) => {
+  somEscolhido = e.target.value; gravarStorage(CHAVE_SOM, somEscolhido);
+  if (audio.tocando && estado !== "tocando") pararSom();
+  prepararSom();
+});
+$("trocar").addEventListener("click", () => $("arquivo").click());
+$("arquivo").addEventListener("change", async (e) => {
+  const arq = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!arq) return;
+  mostrarErro("");
+  let buf;
+  try { buf = await decodificar(arq); }
+  catch (err) { mostrarErro("Esse arquivo não é um áudio que eu consiga tocar (use MP3, WAV ou OGG)."); return; }
+  try {
+    await gravarPersonalizado({ nome: arq.name, tipo: arq.type, blob: new Blob([arq], { type: arq.type }) });
+  } catch (err) { mostrarErro("Não consegui guardar o arquivo no navegador."); return; }
+  pararSom();
+  audio.buffers.personalizado = buf;
+  somEscolhido = "personalizado"; gravarStorage(CHAVE_SOM, somEscolhido);
+  await atualizarPainelSom();
+});
+$("padrao").addEventListener("click", async () => {
+  if (audio.tocando && estado !== "tocando") pararSom();
+  await apagarPersonalizado().catch(() => {});
+  delete audio.buffers.personalizado;
+  somEscolhido = "beep"; gravarStorage(CHAVE_SOM, "beep");
+  mostrarErro("");
+  await atualizarPainelSom();
+});
+$("volume").addEventListener("input", () => {
+  const v = Number($("volume").value);
+  $("volumeValor").textContent = v + "%";
+  gravarStorage(CHAVE_VOLUME, v);
+  if (audio.ganho) audio.ganho.gain.setTargetAtTime(v / 100, audio.ctx.currentTime, 0.02);
+});
+
+// ---------- Partida ----------
+(function inicio() {
+  const vol = Math.min(100, Math.max(0, parseInt(lerStorage(CHAVE_VOLUME, "80"), 10)));
+  $("volume").value = Number.isFinite(vol) ? vol : 80;
+  $("volumeValor").textContent = $("volume").value + "%";
+  const salvo = parseInt(lerStorage(CHAVE_TEMPO, "300"), 10);
+  definirTempo(Number.isFinite(salvo) && salvo > 0 ? salvo : 300);
+  atualizarPainelSom().then(prepararSom);
+})();
+
+// Ganchos de leitura para os testes automáticos (não mudam nada)
+window.cronometro = {
+  estado: () => estado,
+  restanteMs: () => restante(performance.now()),
+  som: () => ({ tocando: audio.tocando, loop: audio.loop, contexto: audio.ctx ? audio.ctx.state : "nenhum", escolhido: somEscolhido }),
+  instantes,
+};
+</script>
+</body>
+</html>
