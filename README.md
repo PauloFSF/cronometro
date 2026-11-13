@@ -2,6 +2,12 @@
 
 Cronômetro regressivo num arquivo só, `cronometro.html`. Não precisa de internet nem de instalar nada.
 
+<p align="center">
+  <a href="https://github.com/PauloFSF/cronometro/releases/latest/download/cronometro.html"><img alt="Baixar o cronômetro" src="https://img.shields.io/badge/⬇_Baixar-cronometro.html-4fd1c5?style=for-the-badge&labelColor=0f1115"></a>
+</p>
+
+Clique no botão, salve o arquivo e abra com dois cliques.
+
 ## Como abrir
 
 Dois cliques em `cronometro.html`. Abre no navegador padrão.
